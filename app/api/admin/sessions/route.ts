@@ -12,14 +12,25 @@ export async function GET(): Promise<NextResponse> {
 }
 
 export async function POST(request: Request): Promise<NextResponse> {
-  const user = await withAdminUser();
-  if (isAuthResponse(user)) {
-    return user;
+  try {
+    const user = await withAdminUser();
+    if (isAuthResponse(user)) {
+      return user;
+    }
+    const parsed = sessionSchema.safeParse(await request.json());
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.flatten().fieldErrors }, { status: 400 });
+    }
+    const session = await saveSession(user.id, parsed.data);
+    return NextResponse.json(session, { status: 201 });
+  } catch (error) {
+    console.error("Failed to create session", error);
+    return NextResponse.json(
+      {
+        error: "Failed to create session",
+        details: error instanceof Error ? error.message : String(error),
+      },
+      { status: 500 },
+    );
   }
-  const parsed = sessionSchema.safeParse(await request.json());
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.flatten().fieldErrors }, { status: 400 });
-  }
-  const session = await saveSession(user.id, parsed.data);
-  return NextResponse.json(session, { status: 201 });
 }

@@ -16,6 +16,7 @@ export function Button({ children, className = "", variant = "primary", ...props
   return (
     <button
       className={`inline-flex h-11 items-center justify-center gap-2 rounded-2xl px-4 text-sm font-semibold transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 ${variants[variant]} ${className}`}
+      type="button"
       {...props}
     >
       {children}

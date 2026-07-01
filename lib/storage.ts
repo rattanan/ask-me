@@ -13,23 +13,44 @@ async function ensureDataDir(): Promise<void> {
   await mkdir(dataDir, { recursive: true });
 }
 
+async function ensureJsonFile(filePath: string): Promise<void> {
+  await ensureDataDir();
+  try {
+    await readFile(filePath, "utf8");
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+      await writeFile(filePath, "[]\n", "utf8");
+      return;
+    }
+    throw new Error(`Failed to initialize JSON file ${path.basename(filePath)}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
 async function readJson<T>(filePath: string, fallback: T): Promise<T> {
   try {
+    await ensureJsonFile(filePath);
     const content = await readFile(filePath, "utf8");
+    if (content.trim().length === 0) {
+      return fallback;
+    }
     return JSON.parse(content) as T;
   } catch (error) {
     if (error instanceof Error && "code" in error && error.code === "ENOENT") {
       return fallback;
     }
-    throw error;
+    throw new Error(`Failed to read JSON file ${path.basename(filePath)}: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
 async function writeJson<T>(filePath: string, data: T): Promise<void> {
-  await ensureDataDir();
-  const tempFile = `${filePath}.${randomUUID()}.tmp`;
-  await writeFile(tempFile, `${JSON.stringify(data, null, 2)}\n`, "utf8");
-  await rename(tempFile, filePath);
+  try {
+    await ensureJsonFile(filePath);
+    const tempFile = `${filePath}.${randomUUID()}.tmp`;
+    await writeFile(tempFile, `${JSON.stringify(data, null, 2)}\n`, "utf8");
+    await rename(tempFile, filePath);
+  } catch (error) {
+    throw new Error(`Failed to write JSON file ${path.basename(filePath)}: ${error instanceof Error ? error.message : String(error)}`);
+  }
 }
 
 function toPublicSession(session: Session): PublicSession {

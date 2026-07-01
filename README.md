@@ -257,6 +257,69 @@ npm run build
 - Ensure the deployed runtime can persist files in `data/`.
 - For serverless platforms with ephemeral filesystems, replace JSON file storage with a durable server-side storage adapter before production use.
 
+## Google Cloud Run Demo Deployment
+
+This project is configured for quick Google Cloud Run deployment with a Next.js standalone Docker image.
+
+Cloud Run OAuth callback URL:
+
+```text
+https://YOUR_CLOUD_RUN_URL/api/auth/callback/google
+```
+
+Add that callback URL to the Google OAuth Client in Google Cloud Console before testing sign-in.
+
+### Authenticate and Configure Project
+
+```bash
+gcloud auth login
+gcloud config set project YOUR_PROJECT_ID
+gcloud services enable run.googleapis.com cloudbuild.googleapis.com
+```
+
+### First Deploy
+
+Deploy the service from source:
+
+```bash
+gcloud run deploy ask-me \
+  --source . \
+  --region asia-southeast1 \
+  --allow-unauthenticated \
+  --min-instances 1 \
+  --max-instances 1
+```
+
+Cloud Run should return a service URL. Use that URL as `NEXTAUTH_URL`.
+
+### Set Runtime Environment Variables
+
+```bash
+gcloud run services update ask-me \
+  --region asia-southeast1 \
+  --set-env-vars NEXTAUTH_URL=https://YOUR_CLOUD_RUN_URL,NEXTAUTH_SECRET=YOUR_SECRET,GOOGLE_CLIENT_ID=YOUR_GOOGLE_CLIENT_ID,GOOGLE_CLIENT_SECRET=YOUR_GOOGLE_CLIENT_SECRET
+```
+
+After updating environment variables, test:
+
+```text
+https://YOUR_CLOUD_RUN_URL
+```
+
+## Demo Storage Warning
+
+This Cloud Run setup intentionally uses local JSON files inside the container for demo/prototype use only.
+
+Important limitations:
+
+- Local JSON storage on Cloud Run is temporary.
+- Data may be lost when the container restarts.
+- Data may be lost when the service is redeployed.
+- Data may become inconsistent if the service scales beyond one instance.
+- The recommended demo setting is `--max-instances 1` to reduce inconsistency risk.
+
+For production, migrate storage to durable infrastructure such as Google Cloud Storage, Firestore, Cloud SQL, Memorystore/Redis, or another managed database.
+
 ## License
 
 Private project.

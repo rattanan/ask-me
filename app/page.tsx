@@ -1,65 +1,74 @@
+import Link from "next/link";
 import Image from "next/image";
+import { headers } from "next/headers";
+import QRCode from "qrcode";
+import { Calendar, Monitor, Settings } from "lucide-react";
+import { getActiveSession } from "@/lib/storage";
+import { getQuestionUrl } from "@/lib/ui";
 
-export default function Home() {
+export const dynamic = "force-dynamic";
+
+export default async function Home() {
+  const session = await getActiveSession();
+  const headerStore = await headers();
+  const host = headerStore.get("host") ?? "localhost:3000";
+  const protocol = headerStore.get("x-forwarded-proto") ?? "http";
+  const origin = `${protocol}://${host}`;
+  const questionUrl = session ? getQuestionUrl(session.id, origin) : "";
+  const qrCode = questionUrl ? await QRCode.toDataURL(questionUrl, { margin: 1, width: 280 }) : "";
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <main className="min-h-screen bg-white">
+      <section className="mx-auto flex min-h-screen w-full max-w-6xl flex-col px-5 py-6 sm:px-8">
+        <nav className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-semibold text-blue-600">Live Question Wall</p>
+            <h1 className="text-2xl font-bold tracking-tight text-zinc-950">Ask, watch, discuss.</h1>
+          </div>
+          <Link className="rounded-2xl border border-zinc-200 px-4 py-2 text-sm font-semibold text-zinc-700 transition hover:bg-zinc-50" href="/admin">
+            Admin
+          </Link>
+        </nav>
+
+        <div className="grid flex-1 items-center gap-10 py-10 lg:grid-cols-[1.1fr_0.9fr]">
+          <div className="max-w-2xl">
+            <div className="mb-5 inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1 text-sm font-semibold text-blue-700">
+              <Calendar className="h-4 w-4" />
+              {session?.date || "Ready for your next lecture"}
+            </div>
+            <h2 className="text-5xl font-bold leading-tight tracking-tight text-zinc-950 sm:text-7xl">
+              {session?.title ?? "Create your first lecture"}
+            </h2>
+            <p className="mt-5 max-w-xl text-lg leading-8 text-zinc-600">
+              {session?.description || "Collect audience questions instantly and show them as calm, readable sticky notes on the big screen."}
+            </p>
+            {session?.presenter ? <p className="mt-4 text-base font-semibold text-zinc-800">Presented by {session.presenter}</p> : null}
+            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+              {session ? (
+                <Link className="inline-flex h-14 items-center justify-center rounded-2xl bg-blue-600 px-6 text-base font-bold text-white shadow-lg shadow-blue-600/20 transition hover:bg-blue-700" href={`/question/${session.id}`}>
+                  Ask a Question
+                </Link>
+              ) : null}
+              <Link className="inline-flex h-14 items-center justify-center gap-2 rounded-2xl border border-zinc-200 px-6 text-base font-bold text-zinc-800 transition hover:bg-zinc-50" href={session ? `/wall/${session.id}` : "/admin"}>
+                <Monitor className="h-5 w-5" />
+                Open Wall
+              </Link>
+              <Link className="inline-flex h-14 items-center justify-center gap-2 rounded-2xl px-6 text-base font-bold text-zinc-700 transition hover:bg-zinc-50" href="/admin">
+                <Settings className="h-5 w-5" />
+                Manage
+              </Link>
+            </div>
+          </div>
+
+          <div className="rounded-[2rem] border border-zinc-100 bg-zinc-50 p-5 shadow-[0_24px_70px_rgba(15,23,42,0.08)]">
+            <div className="rounded-[1.5rem] bg-white p-6 text-center shadow-sm">
+              {qrCode ? <Image className="mx-auto h-64 w-64" src={qrCode} alt={`QR code for ${session?.title}`} width={256} height={256} unoptimized /> : <div className="grid h-64 place-items-center rounded-3xl bg-zinc-100 text-zinc-500">No active lecture</div>}
+              <p className="mt-4 text-sm font-semibold text-zinc-500">Scan to submit a question</p>
+              <p className="mt-2 break-all text-xs text-zinc-400">{questionUrl || "Create a session in Admin"}</p>
+            </div>
+          </div>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+      </section>
+    </main>
   );
 }

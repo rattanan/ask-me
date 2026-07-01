@@ -5,14 +5,17 @@ import Link from "next/link";
 import Image from "next/image";
 import QRCode from "qrcode";
 import { Copy, Download, Pencil, Play, Printer, Square, Trash2 } from "lucide-react";
+import { AuthButton } from "@/components/AuthButton";
 import { Button } from "@/components/Button";
 import { Field, Input, Textarea } from "@/components/Field";
+import type { AuthenticatedUser } from "@/lib/auth";
 import type { Session } from "@/lib/types";
 import { getQuestionUrl } from "@/lib/ui";
 
 interface AdminHomeProps {
   initialOrigin: string;
   initialSessions: Session[];
+  user: AuthenticatedUser;
 }
 
 interface SessionForm {
@@ -21,6 +24,7 @@ interface SessionForm {
   presenter: string;
   date: string;
   active: boolean;
+  allowQuestions: boolean;
 }
 
 const emptyForm: SessionForm = {
@@ -29,9 +33,10 @@ const emptyForm: SessionForm = {
   presenter: "",
   date: new Date().toISOString().slice(0, 10),
   active: false,
+  allowQuestions: true,
 };
 
-export function AdminHome({ initialOrigin, initialSessions }: AdminHomeProps) {
+export function AdminHome({ initialOrigin, initialSessions, user }: AdminHomeProps) {
   const [sessions, setSessions] = useState(initialSessions);
   const [form, setForm] = useState<SessionForm>(emptyForm);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -46,13 +51,13 @@ export function AdminHome({ initialOrigin, initialSessions }: AdminHomeProps) {
   }, [initialOrigin, sessions]);
 
   async function refreshSessions() {
-    const response = await fetch("/api/sessions");
+    const response = await fetch("/api/admin/sessions");
     setSessions((await response.json()) as Session[]);
   }
 
   async function saveSession(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    await fetch(editingId ? `/api/sessions/${editingId}` : "/api/sessions", {
+    await fetch(editingId ? `/api/admin/sessions/${editingId}` : "/api/admin/sessions", {
       method: editingId ? "PUT" : "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(form),
@@ -63,7 +68,7 @@ export function AdminHome({ initialOrigin, initialSessions }: AdminHomeProps) {
   }
 
   async function setActive(sessionId: string, active: boolean) {
-    await fetch(`/api/sessions/${sessionId}`, {
+    await fetch(`/api/admin/sessions/${sessionId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ active }),
@@ -72,7 +77,7 @@ export function AdminHome({ initialOrigin, initialSessions }: AdminHomeProps) {
   }
 
   async function deleteSession(sessionId: string) {
-    await fetch(`/api/sessions/${sessionId}`, { method: "DELETE" });
+    await fetch(`/api/admin/sessions/${sessionId}`, { method: "DELETE" });
     await refreshSessions();
   }
 
@@ -84,6 +89,7 @@ export function AdminHome({ initialOrigin, initialSessions }: AdminHomeProps) {
       presenter: session.presenter,
       date: session.date,
       active: session.active,
+      allowQuestions: session.allowQuestions,
     });
   }
 
@@ -91,7 +97,10 @@ export function AdminHome({ initialOrigin, initialSessions }: AdminHomeProps) {
     <main className="min-h-screen bg-zinc-50 px-5 py-6">
       <section className="mx-auto grid max-w-7xl gap-6 lg:grid-cols-[380px_1fr]">
         <form onSubmit={saveSession} className="h-fit rounded-[2rem] bg-white p-6 shadow-sm">
-          <p className="text-sm font-semibold text-blue-600">Admin</p>
+          <div className="mb-6 flex items-center justify-between gap-3">
+            <p className="text-sm font-semibold text-blue-600">Admin</p>
+            <AuthButton user={user} />
+          </div>
           <h1 className="mt-1 text-3xl font-bold tracking-tight text-zinc-950">{editingId ? "Edit Lecture" : "Create Lecture"}</h1>
           <div className="mt-6 grid gap-4">
             <Field label="Title">
@@ -109,6 +118,10 @@ export function AdminHome({ initialOrigin, initialSessions }: AdminHomeProps) {
             <label className="flex items-center gap-3 rounded-2xl bg-zinc-50 p-4 text-sm font-semibold text-zinc-700">
               <input checked={form.active} onChange={(event) => setForm({ ...form, active: event.target.checked })} type="checkbox" />
               Active
+            </label>
+            <label className="flex items-center gap-3 rounded-2xl bg-zinc-50 p-4 text-sm font-semibold text-zinc-700">
+              <input checked={form.allowQuestions} onChange={(event) => setForm({ ...form, allowQuestions: event.target.checked })} type="checkbox" />
+              Allow Questions
             </label>
             <div className="flex gap-2">
               <Button className="flex-1" type="submit">{editingId ? "Save" : "Create"}</Button>
@@ -138,8 +151,8 @@ export function AdminHome({ initialOrigin, initialSessions }: AdminHomeProps) {
                       <Button variant="secondary" onClick={() => editSession(session)}><Pencil className="h-4 w-4" />Edit</Button>
                       <Button variant="secondary" onClick={() => setActive(session.id, !session.active)}>{session.active ? <Square className="h-4 w-4" /> : <Play className="h-4 w-4" />}{session.active ? "End Session" : "Start Session"}</Button>
                       <Button variant="secondary" onClick={() => navigator.clipboard.writeText(url)}><Copy className="h-4 w-4" />Copy URL</Button>
-                      <Link className="inline-flex h-11 items-center justify-center rounded-2xl bg-zinc-100 px-4 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-200" href={`/admin/${session.id}`}>Dashboard</Link>
-                      <Link className="inline-flex h-11 items-center justify-center rounded-2xl bg-zinc-100 px-4 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-200" href={`/wall/${session.id}`}>Wall</Link>
+                      <Link className="inline-flex h-11 items-center justify-center rounded-2xl bg-zinc-100 px-4 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-200" href={`/admin/lectures/${session.id}/questions`}>Questions</Link>
+                      <Link className="inline-flex h-11 items-center justify-center rounded-2xl bg-zinc-100 px-4 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-200" href={`/admin/lectures/${session.id}/wall`}>Wall</Link>
                       <Button variant="danger" onClick={() => deleteSession(session.id)}><Trash2 className="h-4 w-4" />Delete</Button>
                     </div>
                   </div>
@@ -156,7 +169,7 @@ export function AdminHome({ initialOrigin, initialSessions }: AdminHomeProps) {
               </article>
             );
           })}
-          {sessions.length === 0 ? <div className="rounded-[2rem] bg-white p-12 text-center text-zinc-500 shadow-sm">Create your first lecture to generate a QR code.</div> : null}
+          {sessions.length === 0 ? <div className="rounded-[2rem] bg-white p-12 text-center text-zinc-500 shadow-sm">You have not created any lectures yet.</div> : null}
         </div>
       </section>
     </main>

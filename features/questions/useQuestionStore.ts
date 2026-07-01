@@ -20,7 +20,7 @@ const emptyStats: QuestionStats = {
 };
 
 function calculateStats(questions: Question[]): QuestionStats {
-  const visible = questions.filter((question) => !question.hidden);
+  const visible = questions.filter((question) => question.status === "approved" || question.status === "pinned");
   const firstTime = visible.at(-1)?.createdAt ? Date.parse(visible.at(-1)!.createdAt) : Date.now();
   const minutes = Math.max((Date.now() - firstTime) / 60000, 1);
   const emojiCounts = visible.reduce<Record<string, number>>((accumulator, question) => {
@@ -46,7 +46,9 @@ export const useQuestionStore = create<QuestionState>((set) => ({
     }),
   updateQuestion: (question) =>
     set((state) => {
-      const questions = state.questions.map((item) => (item.id === question.id ? question : item));
+      const questions = state.questions.some((item) => item.id === question.id)
+        ? state.questions.map((item) => (item.id === question.id ? question : item))
+        : [question, ...state.questions];
       return { questions, stats: calculateStats(questions) };
     }),
   removeQuestion: (questionId) =>

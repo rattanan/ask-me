@@ -12,7 +12,7 @@ export async function POST(request: Request): Promise<NextResponse> {
   }
 
   const session = await getSession(parsed.data.sessionId);
-  if (!session || !session.active) {
+  if (!session || !session.active || !session.allowQuestions) {
     return NextResponse.json({ error: "This session is not accepting questions" }, { status: 403 });
   }
 
@@ -24,5 +24,5 @@ export async function POST(request: Request): Promise<NextResponse> {
 
   const question = await addQuestion(parsed.data);
   publishQuestion(question);
-  return NextResponse.json(question, { status: 201 });
+  return NextResponse.json({ id: question.id, status: question.status, createdAt: question.createdAt }, { status: 201 });
 }

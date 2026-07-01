@@ -2,14 +2,17 @@ import Link from "next/link";
 import Image from "next/image";
 import { headers } from "next/headers";
 import QRCode from "qrcode";
-import { Calendar, Monitor, Settings } from "lucide-react";
-import { getActiveSession } from "@/lib/storage";
+import { Calendar, Settings } from "lucide-react";
+import { AuthButton } from "@/components/AuthButton";
+import { getCurrentUser } from "@/lib/auth";
+import { getPublicActiveSession } from "@/lib/storage";
 import { getQuestionUrl } from "@/lib/ui";
 
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
-  const session = await getActiveSession();
+  const user = await getCurrentUser();
+  const session = await getPublicActiveSession();
   const headerStore = await headers();
   const host = headerStore.get("host") ?? "localhost:3000";
   const protocol = headerStore.get("x-forwarded-proto") ?? "http";
@@ -25,16 +28,14 @@ export default async function Home() {
             <p className="text-sm font-semibold text-blue-600">Live Question Wall</p>
             <h1 className="text-2xl font-bold tracking-tight text-zinc-950">Ask, watch, discuss.</h1>
           </div>
-          <Link className="rounded-2xl border border-zinc-200 px-4 py-2 text-sm font-semibold text-zinc-700 transition hover:bg-zinc-50" href="/admin">
-            Admin
-          </Link>
+          <AuthButton user={user} />
         </nav>
 
         <div className="grid flex-1 items-center gap-10 py-10 lg:grid-cols-[1.1fr_0.9fr]">
           <div className="max-w-2xl">
             <div className="mb-5 inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1 text-sm font-semibold text-blue-700">
               <Calendar className="h-4 w-4" />
-              {session?.date || "Ready for your next lecture"}
+              {session ? "Questions are open" : "Ready for your next lecture"}
             </div>
             <h2 className="text-5xl font-bold leading-tight tracking-tight text-zinc-950 sm:text-7xl">
               {session?.title ?? "Create your first lecture"}
@@ -49,10 +50,6 @@ export default async function Home() {
                   Ask a Question
                 </Link>
               ) : null}
-              <Link className="inline-flex h-14 items-center justify-center gap-2 rounded-2xl border border-zinc-200 px-6 text-base font-bold text-zinc-800 transition hover:bg-zinc-50" href={session ? `/wall/${session.id}` : "/admin"}>
-                <Monitor className="h-5 w-5" />
-                Open Wall
-              </Link>
               <Link className="inline-flex h-14 items-center justify-center gap-2 rounded-2xl px-6 text-base font-bold text-zinc-700 transition hover:bg-zinc-50" href="/admin">
                 <Settings className="h-5 w-5" />
                 Manage

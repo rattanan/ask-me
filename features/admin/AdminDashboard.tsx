@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Download, EyeOff, Highlighter, Pin, Search, Star, Trash2 } from "lucide-react";
+import { Check, Download, EyeOff, Pin, Search, Trash2, Undo2 } from "lucide-react";
 import { Button } from "@/components/Button";
 import { Input } from "@/components/Field";
 import { useQuestionStore } from "@/features/questions/useQuestionStore";
-import type { Question, QuestionStats, Session } from "@/lib/types";
+import type { Question, QuestionStats, QuestionStatus, Session } from "@/lib/types";
 import { colorClasses, formatTime } from "@/lib/ui";
 
 interface AdminDashboardProps {
@@ -27,22 +27,22 @@ export function AdminDashboard({ initialQuestions, initialStats, session }: Admi
     return questions.filter((question) => `${question.question} ${question.name} ${question.emoji}`.toLowerCase().includes(query));
   }, [questions, search]);
 
-  async function patchQuestion(question: Question, patch: Partial<Question>) {
-    const response = await fetch(`/api/questions/${session.id}`, {
+  async function patchQuestion(question: Question, status: QuestionStatus) {
+    const response = await fetch(`/api/admin/questions/${session.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: question.id, ...patch }),
+      body: JSON.stringify({ id: question.id, status }),
     });
     updateQuestion((await response.json()) as Question);
   }
 
   async function deleteOne(questionId: string) {
-    await fetch(`/api/questions/${session.id}?id=${questionId}`, { method: "DELETE" });
+    await fetch(`/api/admin/questions/${session.id}?id=${questionId}`, { method: "DELETE" });
     removeQuestion(questionId);
   }
 
   async function clearSession() {
-    await fetch(`/api/questions/${session.id}`, { method: "DELETE" });
+    await fetch(`/api/admin/questions/${session.id}`, { method: "DELETE" });
     clearQuestions();
   }
 
@@ -83,23 +83,22 @@ export function AdminDashboard({ initialQuestions, initialStats, session }: Admi
 
         <div className="mt-5 grid gap-3">
           {filteredQuestions.map((question) => (
-            <article className={`rounded-[1.5rem] p-4 shadow-sm ${colorClasses[question.color]} ${question.hidden ? "opacity-45" : ""}`} key={question.id}>
+            <article className={`rounded-[1.5rem] p-4 shadow-sm ${colorClasses[question.color]} ${question.status === "hidden" ? "opacity-45" : ""}`} key={question.id}>
               <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                 <div>
-                  <div className="flex items-center gap-2 text-sm font-semibold text-zinc-600">
+                  <div className="flex flex-wrap items-center gap-2 text-sm font-semibold text-zinc-600">
                     <span className="text-2xl">{question.emoji}</span>
                     <span>{question.name}</span>
                     <span>{formatTime(question.createdAt)}</span>
-                    {question.pinned ? <span>Pinned</span> : null}
-                    {question.highlighted ? <span>Highlighted</span> : null}
+                    <span className="rounded-full bg-white/70 px-2 py-1 text-xs uppercase">{question.status}</span>
                   </div>
                   <p className="mt-2 text-xl font-bold text-zinc-950">{question.question}</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <Button variant="secondary" onClick={() => patchQuestion(question, { pinned: !question.pinned })}><Pin className="h-4 w-4" />Pin</Button>
-                  <Button variant="secondary" onClick={() => patchQuestion(question, { highlighted: !question.highlighted })}><Highlighter className="h-4 w-4" />Highlight</Button>
-                  <Button variant="secondary" onClick={() => patchQuestion(question, { hidden: !question.hidden })}><EyeOff className="h-4 w-4" />Hide</Button>
-                  <Button variant="secondary" onClick={() => patchQuestion(question, { liked: question.liked + 1 })}><Star className="h-4 w-4" />{question.liked}</Button>
+                  <Button variant="secondary" onClick={() => patchQuestion(question, "approved")}><Check className="h-4 w-4" />Approve</Button>
+                  <Button variant="secondary" onClick={() => patchQuestion(question, question.status === "pinned" ? "approved" : "pinned")}><Pin className="h-4 w-4" />{question.status === "pinned" ? "Unpin" : "Pin"}</Button>
+                  <Button variant="secondary" onClick={() => patchQuestion(question, "hidden")}><EyeOff className="h-4 w-4" />Hide</Button>
+                  <Button variant="secondary" onClick={() => patchQuestion(question, "pending")}><Undo2 className="h-4 w-4" />Pending</Button>
                   <Button variant="danger" onClick={() => deleteOne(question.id)}><Trash2 className="h-4 w-4" />Delete</Button>
                 </div>
               </div>

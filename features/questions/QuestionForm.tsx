@@ -26,7 +26,7 @@ export function QuestionForm({ sessionId }: QuestionFormProps) {
     setMessage("");
     setIsSubmitting(true);
 
-    const response = await fetch("/api/questions", {
+    const response = await fetch("/api/public/questions/submit", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ sessionId, name, question, emoji, color }),
@@ -44,7 +44,7 @@ export function QuestionForm({ sessionId }: QuestionFormProps) {
     setEmoji("🤔");
     setColor("yellow");
     setSuccessCount((count) => count + 1);
-    setMessage("Question sent");
+    setMessage("Question sent for review");
     setIsSubmitting(false);
   }
 
@@ -110,9 +110,9 @@ export function QuestionForm({ sessionId }: QuestionFormProps) {
             initial={{ opacity: 0, scale: 0.96, y: 8 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, y: -8 }}
-            className={`flex items-center gap-2 rounded-2xl px-4 py-3 text-sm font-semibold ${message === "Question sent" ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}
+            className={`flex items-center gap-2 rounded-2xl px-4 py-3 text-sm font-semibold ${message === "Question sent for review" ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}
           >
-            {message === "Question sent" ? <Sparkles className="h-4 w-4" /> : null}
+            {message === "Question sent for review" ? <Sparkles className="h-4 w-4" /> : null}
             {message}
           </motion.div>
         ) : null}

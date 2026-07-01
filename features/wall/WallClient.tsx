@@ -28,7 +28,7 @@ export function WallClient({ initialQuestions, initialStats, session }: WallClie
   }, []);
 
   useEffect(() => {
-    const source = new EventSource(`/api/events/${session.id}`);
+    const source = new EventSource(`/api/admin/events/${session.id}`);
     source.addEventListener("question", (event) => {
       const question = JSON.parse((event as MessageEvent<string>).data) as Question;
       addQuestion(question);
@@ -41,7 +41,7 @@ export function WallClient({ initialQuestions, initialStats, session }: WallClie
 
     async function syncQuestions() {
       try {
-        const response = await fetch(`/api/questions/${session.id}?includeHidden=false`, {
+        const response = await fetch(`/api/admin/questions/${session.id}`, {
           cache: "no-store",
         });
         if (!response.ok || cancelled) {
@@ -62,7 +62,7 @@ export function WallClient({ initialQuestions, initialStats, session }: WallClie
   }, [session.id, setQuestions]);
 
   const visibleQuestions = useMemo(() => {
-    const filtered = questions.filter((question) => !question.hidden);
+    const filtered = questions.filter((question) => question.status === "approved" || question.status === "pinned");
     if (shuffleSeed === 0) {
       return filtered;
     }

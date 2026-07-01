@@ -1,6 +1,7 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { AdminDashboard } from "@/features/admin/AdminDashboard";
-import { getQuestionStats, getSession, getSessionQuestions } from "@/lib/storage";
+import { getCurrentUser } from "@/lib/auth";
+import { getOwnedSession, getQuestionStats, getSessionQuestions } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
 
@@ -8,9 +9,13 @@ interface PageProps {
   params: Promise<{ sessionId: string }>;
 }
 
-export default async function AdminSessionPage({ params }: PageProps) {
+export default async function AdminQuestionsPage({ params }: PageProps) {
+  const user = await getCurrentUser();
+  if (!user) {
+    redirect("/login");
+  }
   const { sessionId } = await params;
-  const session = await getSession(sessionId);
+  const session = await getOwnedSession(sessionId, user.id);
   if (!session) {
     notFound();
   }

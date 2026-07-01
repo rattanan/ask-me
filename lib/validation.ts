@@ -7,6 +7,7 @@ export const sessionSchema = z.object({
   presenter: z.string().trim().max(80).default(""),
   date: z.string().trim().max(40).default(""),
   active: z.boolean().default(false),
+  allowQuestions: z.boolean().default(true),
 });
 
 export const questionSchema = z.object({
@@ -18,8 +19,5 @@ export const questionSchema = z.object({
 });
 
 export const questionPatchSchema = z.object({
-  pinned: z.boolean().optional(),
-  highlighted: z.boolean().optional(),
-  hidden: z.boolean().optional(),
-  liked: z.number().int().min(0).optional(),
+  status: z.enum(["pending", "approved", "hidden", "pinned"]),
 });

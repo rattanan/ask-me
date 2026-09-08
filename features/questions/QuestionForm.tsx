@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { useEffect, useRef, useState } from "react";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { Send, Sparkles } from "lucide-react";
 import { Button } from "@/components/Button";
 import { Field, Input, Textarea } from "@/components/Field";
@@ -20,32 +20,44 @@ export function QuestionForm({ sessionId }: QuestionFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState("");
   const [successCount, setSuccessCount] = useState(0);
+  const [showSuccess, setShowSuccess] = useState(false);
+  const submitting = useRef(false);
+  const reducedMotion = useReducedMotion();
+
+  useEffect(() => {
+    if (!showSuccess) return;
+    const timer = setTimeout(() => setShowSuccess(false), 3000);
+    return () => clearTimeout(timer);
+  }, [showSuccess, successCount]);
 
   async function submitQuestion(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (submitting.current) return;
+    submitting.current = true;
     setMessage("");
+    setShowSuccess(false);
     setIsSubmitting(true);
 
-    const response = await fetch("/api/public/questions/submit", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sessionId, name, question, emoji, color }),
-    });
-
-    if (!response.ok) {
-      const body = (await response.json()) as { error?: string | Record<string, string[]> };
-      setMessage(typeof body.error === "string" ? body.error : "Please check your question and try again.");
+    try {
+      const response = await fetch("/api/public/questions/submit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId, name, question, emoji, color }),
+      });
+      if (!response.ok) {
+        const body = (await response.json()) as { error?: string | Record<string, string[]> };
+        setMessage(typeof body.error === "string" ? body.error : "Please check your question and try again.");
+        return;
+      }
+      setQuestion("");
+      setSuccessCount((count) => count + 1);
+      setShowSuccess(true);
+    } catch {
+      setMessage("ส่งคำถามไม่สำเร็จ กรุณาลองใหม่อีกครั้ง");
+    } finally {
+      submitting.current = false;
       setIsSubmitting(false);
-      return;
     }
-
-    setName("");
-    setQuestion("");
-    setEmoji("🤔");
-    setColor("yellow");
-    setSuccessCount((count) => count + 1);
-    setMessage("Question sent — now visible on the wall");
-    setIsSubmitting(false);
   }
 
   return (
@@ -57,6 +69,7 @@ export function QuestionForm({ sessionId }: QuestionFormProps) {
       <Field label="Question">
         <Textarea
           required
+          disabled={isSubmitting}
           maxLength={200}
           value={question}
           onChange={(event) => setQuestion(event.target.value)}
@@ -71,6 +84,7 @@ export function QuestionForm({ sessionId }: QuestionFormProps) {
           {EMOJIS.map((item) => (
             <button
               aria-label={`Choose ${item}`}
+              aria-pressed={emoji === item}
               className={`grid h-11 w-11 place-items-center rounded-2xl text-xl transition ${emoji === item ? "bg-blue-600 shadow-lg shadow-blue-600/20" : "bg-zinc-100 hover:bg-zinc-200"}`}
               key={item}
               onClick={() => setEmoji(item)}
@@ -87,6 +101,7 @@ export function QuestionForm({ sessionId }: QuestionFormProps) {
         <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
           {NOTE_COLORS.map((item) => (
             <button
+              aria-pressed={color === item}
               className={`h-12 rounded-2xl border text-xs font-bold text-zinc-700 transition ${colorClasses[item]} ${color === item ? "border-blue-600 ring-4 ring-blue-100" : "border-transparent"}`}
               key={item}
               onClick={() => setColor(item)}
@@ -98,25 +113,34 @@ export function QuestionForm({ sessionId }: QuestionFormProps) {
         </div>
       </div>
 
-      <Button className="h-14 text-base" disabled={isSubmitting || question.trim().length === 0} type="submit">
-        <Send className="h-5 w-5" />
-        Submit
-      </Button>
+      <div className="relative">
+        <div aria-live="polite" aria-atomic="true" className="pointer-events-none absolute bottom-full left-0 right-0 z-10 mb-3 flex justify-center">
+          <AnimatePresence>
+            {showSuccess ? (
+              <motion.div
+                key={successCount}
+                initial={{ opacity: 0, scale: reducedMotion ? 1 : 0.94, y: reducedMotion ? 0 : 8 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, y: reducedMotion ? 0 : -6 }}
+                transition={{ duration: reducedMotion ? 0 : 0.2 }}
+                className="relative flex items-center gap-2 rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-emerald-900/15"
+              >
+                <Sparkles aria-hidden="true" className="h-4 w-4" />
+                ส่งคำถามสำเร็จแล้ว
+                <span aria-hidden="true" className="absolute -bottom-1 left-1/2 h-2 w-2 -translate-x-1/2 rotate-45 bg-emerald-600" />
+              </motion.div>
+            ) : null}
+          </AnimatePresence>
+        </div>
+        <Button className="h-14 w-full text-base" disabled={isSubmitting || question.trim().length === 0} type="submit">
+          <Send className="h-5 w-5" />
+          {isSubmitting ? "กำลังส่ง…" : "Submit"}
+        </Button>
+      </div>
 
-      <AnimatePresence>
-        {message ? (
-          <motion.div
-            key={`${message}-${successCount}`}
-            initial={{ opacity: 0, scale: 0.96, y: 8 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            className={`flex items-center gap-2 rounded-2xl px-4 py-3 text-sm font-semibold ${message === "Question sent — now visible on the wall" ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}
-          >
-            {message === "Question sent — now visible on the wall" ? <Sparkles className="h-4 w-4" /> : null}
-            {message}
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
+      {message ? (
+        <p role="alert" className="rounded-2xl bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">{message}</p>
+      ) : null}
     </form>
   );
 }

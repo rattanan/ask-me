@@ -4,6 +4,7 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { ArrowUpRight, ChartNoAxesCombined, Lightbulb, LoaderCircle, Sparkles, Trophy, Users, X } from "lucide-react";
 import { topUsers, questionFingerprint } from "@/lib/analytics";
 import type { Question } from "@/lib/types";
+import { readApiJson } from "@/lib/api-response";
 import type { InsightReport } from "@/lib/insight-types";
 
 function Bars({ items, total, violet = false, onSelect }: { items: {name:string;count:number}[]; total:number; violet?:boolean; onSelect:(index:number)=>void }) {
@@ -32,7 +33,7 @@ export function QuestionAnalytics({ questions, sessionId, autoGenerate = false }
     const abort = new AbortController(); controller.current=abort; setLoading(true); setError("");
     try {
       const response = await fetch(`/api/admin/insights/${sessionId}`,{method:"POST",signal:abort.signal});
-      const body = await response.json(); if (!response.ok) throw new Error(body.error || "วิเคราะห์ไม่สำเร็จ");
+      const body = await readApiJson<InsightReport>(response);
       setReport(body); setSelection(null);
     } catch (e) { if (!abort.signal.aborted) setError(e instanceof Error?e.message:"วิเคราะห์ไม่สำเร็จ กรุณาลองใหม่"); }
     finally { controller.current=null; setLoading(false); }

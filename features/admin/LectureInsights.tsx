@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { LoaderCircle, Sparkles, X } from "lucide-react";
+import { readApiJson } from "@/lib/api-response";
 import { QuestionAnalytics } from "./QuestionAnalytics";
 import type { Question, Session } from "@/lib/types";
 export function LectureInsights({ session }: {session: Session}) {
@@ -16,7 +17,7 @@ export function LectureInsights({ session }: {session: Session}) {
     const interval = setInterval(async () => {
       try {
         const response = await fetch(`/api/admin/questions/${session.id}`, {signal:controller.signal});
-        if (response.ok) { const data = await response.json(); setQuestions(data.questions); }
+        if (response.ok) { const data = await readApiJson<{questions:Question[]}>(response); setQuestions(data.questions); }
       } catch { /* Retry while the dialog remains open. */ }
     }, 5000);
     return () => { clearInterval(interval); controller.abort(); };
@@ -27,8 +28,7 @@ export function LectureInsights({ session }: {session: Session}) {
     const controller = new AbortController(); request.current = controller;
     try {
       const response = await fetch(`/api/admin/questions/${session.id}`,{signal:controller.signal});
-      if (!response.ok) throw new Error("โหลดคำถามของ lecture นี้ไม่สำเร็จ กรุณาปิดแล้วลองใหม่");
-      const body = await response.json();setQuestions(body.questions);
+      const body = await readApiJson<{questions:Question[]}>(response);setQuestions(body.questions);
     } catch(e) {if (!controller.signal.aborted) setError(e instanceof Error?e.message:"โหลดคำถามไม่สำเร็จ");}
   }
   function close() { request.current?.abort();setOpen(false);dialog.current?.close(); }

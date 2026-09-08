@@ -6,3 +6,6 @@ README.md
 npm-debug.log
 
 data
+
+.runtime
+.next-build

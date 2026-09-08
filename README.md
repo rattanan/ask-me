@@ -91,10 +91,10 @@ npm ci
 docker compose up -d mysql
 # First migration only, with empty destination tables:
 npm run db:migrate-json
-npm run build
-pm2 startOrReload ecosystem.config.cjs --update-env
-pm2 save
+bash deploy/release.sh
 sudo bash deploy/setup-https.sh
 ```
 
 The app listens on loopback port 3012. Nginx allows long AI requests and disables buffering for wall events. The HTTPS setup preserves an existing site configuration on repeat runs. Add `https://ask-me.rattanan.dev/api/auth/callback/google` to the Google OAuth client's authorized redirect URIs.
+
+`deploy/release.sh` builds into `.next-build`, copies a standalone release (including static files and a private environment file), and switches PM2 to that release. Running files are not overwritten during builds. Releases remain in `.runtime/releases` for rollback.

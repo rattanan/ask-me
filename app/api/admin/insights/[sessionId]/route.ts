@@ -25,7 +25,7 @@ export async function POST(request: Request, context: { params: Promise<{session
     return NextResponse.json(await generateInsights(questions,signal));
   } catch (error) {
     console.error("[insights] Request failed", { type: error instanceof Error ? error.name : "UnknownError" });
-    return NextResponse.json({error:"วิเคราะห์ไม่สำเร็จ หรือ AI ส่งผลลัพธ์ไม่ครบ กรุณาลองใหม่อีกครั้ง"},{status:502});
+    return NextResponse.json({error:"วิเคราะห์ไม่สำเร็จ หรือ AI ส่งผลลัพธ์ไม่ครบ กรุณาลองใหม่อีกครั้ง"},{status:422});
   } finally {
     if (connection) {
       try {

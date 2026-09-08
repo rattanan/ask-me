@@ -31,3 +31,16 @@ test("provider failure never returns fabricated insights",async()=>{
  const original=global.fetch;global.fetch=async()=>new Response("unavailable",{status:503});
  try {await assert.rejects(()=>generateInsights([q("1")],new AbortController().signal));}finally{global.fetch=original;}
 });
+
+test("repairs one invalid AI response and still requires full question coverage", async () => {
+ const original = global.fetch; let calls = 0;
+ global.fetch = async (_url, options) => {
+  calls++;
+  const body = JSON.parse(String(options?.body));
+  assert.match(body.messages[0].content, /"required"/);
+  const value = calls === 1 ? {summary:"incomplete"} : report(["1"]);
+  return Response.json({choices:[{finish_reason:"stop",message:{content:JSON.stringify(value)}}]});
+ };
+ try {const result=await generateInsights([q("1")],new AbortController().signal);assert.equal(calls,2);assert.equal(result.questionCount,1);}
+ finally {global.fetch=original;}
+});

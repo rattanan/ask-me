@@ -5,6 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import QRCode from "qrcode";
 import { Copy, Download, Pencil, Play, Printer, Square, Trash2 } from "lucide-react";
+import { LectureInsights } from "./LectureInsights";
 import { AuthButton } from "@/components/AuthButton";
 import { Button } from "@/components/Button";
 import { Field, Input, Textarea } from "@/components/Field";
@@ -153,6 +154,7 @@ export function AdminHome({ initialOrigin, initialSessions, user }: AdminHomePro
                       <Button variant="secondary" onClick={() => navigator.clipboard.writeText(url)}><Copy className="h-4 w-4" />Copy URL</Button>
                       <Link className="inline-flex h-11 items-center justify-center rounded-2xl bg-zinc-100 px-4 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-200" href={`/admin/lectures/${session.id}/questions`}>Questions</Link>
                       <Link className="inline-flex h-11 items-center justify-center rounded-2xl bg-zinc-100 px-4 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-200" href={`/admin/lectures/${session.id}/wall`}>Wall</Link>
+                      <LectureInsights session={session} />
                       <Button variant="danger" onClick={() => deleteSession(session.id)}><Trash2 className="h-4 w-4" />Delete</Button>
                     </div>
                   </div>

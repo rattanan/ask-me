@@ -1,258 +1,89 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import path from "node:path";
+import type { ResultSetHeader } from "mysql2/promise";
+import { getPool, rows, transaction } from "@/lib/db";
 import type { AdminUser, PublicSession, Question, QuestionInput, QuestionStats, Session, SessionInput } from "@/lib/types";
 import { cleanText } from "@/lib/sanitize";
-
-const dataDir = path.join(process.cwd(), "data");
-const usersFile = path.join(dataDir, "users.json");
-const sessionsFile = path.join(dataDir, "sessions.json");
-const questionsFile = path.join(dataDir, "questions.json");
-
-async function ensureDataDir(): Promise<void> {
-  await mkdir(dataDir, { recursive: true });
-}
-
-async function ensureJsonFile(filePath: string): Promise<void> {
-  await ensureDataDir();
-  try {
-    await readFile(filePath, "utf8");
-  } catch (error) {
-    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
-      await writeFile(filePath, "[]\n", "utf8");
-      return;
-    }
-    throw new Error(`Failed to initialize JSON file ${path.basename(filePath)}: ${error instanceof Error ? error.message : String(error)}`);
-  }
-}
-
-async function readJson<T>(filePath: string, fallback: T): Promise<T> {
-  try {
-    await ensureJsonFile(filePath);
-    const content = await readFile(filePath, "utf8");
-    if (content.trim().length === 0) {
-      return fallback;
-    }
-    return JSON.parse(content) as T;
-  } catch (error) {
-    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
-      return fallback;
-    }
-    throw new Error(`Failed to read JSON file ${path.basename(filePath)}: ${error instanceof Error ? error.message : String(error)}`);
-  }
-}
-
-async function writeJson<T>(filePath: string, data: T): Promise<void> {
-  try {
-    await ensureJsonFile(filePath);
-    const tempFile = `${filePath}.${randomUUID()}.tmp`;
-    await writeFile(tempFile, `${JSON.stringify(data, null, 2)}\n`, "utf8");
-    await rename(tempFile, filePath);
-  } catch (error) {
-    throw new Error(`Failed to write JSON file ${path.basename(filePath)}: ${error instanceof Error ? error.message : String(error)}`);
-  }
-}
-
-function toPublicSession(session: Session): PublicSession {
-  return {
-    id: session.id,
-    title: session.title,
-    description: session.description,
-    presenter: session.presenter,
-    active: session.active,
-    allowQuestions: session.allowQuestions,
-  };
-}
-
-export async function getUsers(): Promise<AdminUser[]> {
-  return readJson<AdminUser[]>(usersFile, []);
-}
-
+const sessionRow = (s: Session): Session => ({ ...s, active: Boolean(s.active), allowQuestions: Boolean(s.allowQuestions) });
+const publicRow = (s: Session): PublicSession => ({ id: s.id, title: s.title, description: s.description, presenter: s.presenter, active: s.active, allowQuestions: s.allowQuestions });
+export async function getUsers() { return rows<AdminUser>("SELECT * FROM users"); }
+export async function getUserByEmail(email: string) { return (await rows<AdminUser>("SELECT * FROM users WHERE email = ?", [email]))[0] ?? null; }
 export async function upsertUser(input: Omit<AdminUser, "id" | "createdAt">): Promise<AdminUser> {
-  const users = await getUsers();
-  const existing = users.find((user) => user.googleId === input.googleId || user.email === input.email);
-  const user: AdminUser = {
-    id: existing?.id ?? randomUUID(),
-    googleId: input.googleId,
-    email: cleanText(input.email),
-    name: cleanText(input.name),
-    image: input.image,
-    createdAt: existing?.createdAt ?? new Date().toISOString(),
-  };
-  const nextUsers = [user, ...users.filter((item) => item.id !== user.id)];
-  await writeJson(usersFile, nextUsers);
+  await getPool().execute("INSERT INTO users (id, googleId, email, name, image, createdAt) VALUES (?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE name = ?, image = ?", [randomUUID(), input.googleId, cleanText(input.email), cleanText(input.name), input.image, new Date().toISOString(), cleanText(input.name), input.image]);
+  const user = (await rows<AdminUser>("SELECT * FROM users WHERE googleId = ? OR email = ?", [input.googleId, input.email]))[0];
+  if (!user) throw new Error("Unable to load signed-in user");
   return user;
 }
-
-export async function getUserByEmail(email: string): Promise<AdminUser | null> {
-  const users = await getUsers();
-  return users.find((user) => user.email === email) ?? null;
+export async function getSessions() { return (await rows<Session>("SELECT * FROM sessions ORDER BY createdAt DESC")).map(sessionRow); }
+export async function getQuestions() { return rows<Question>("SELECT * FROM questions ORDER BY createdAt DESC"); }
+export async function getSession(id: string) { const s = (await rows<Session>("SELECT * FROM sessions WHERE id = ?", [id]))[0]; return s ? sessionRow(s) : null; }
+export async function getPublicSession(id: string) { const s = await getSession(id); return s ? publicRow(s) : null; }
+export async function getPublicActiveSession() {
+  const s = (await rows<Session>("SELECT * FROM sessions WHERE active = TRUE ORDER BY allowQuestions DESC, createdAt DESC LIMIT 1"))[0];
+  return s ? publicRow(sessionRow(s)) : null;
 }
-
-export async function getSessions(): Promise<Session[]> {
-  return readJson<Session[]>(sessionsFile, []);
-}
-
-export async function getQuestions(): Promise<Question[]> {
-  return readJson<Question[]>(questionsFile, []);
-}
-
-export async function getPublicActiveSession(): Promise<PublicSession | null> {
-  const sessions = await getSessions();
-  const session = sessions.find((item) => item.active && item.allowQuestions) ?? sessions.find((item) => item.active) ?? null;
-  return session ? toPublicSession(session) : null;
-}
-
-export async function getPublicSession(sessionId: string): Promise<PublicSession | null> {
-  const sessions = await getSessions();
-  const session = sessions.find((item) => item.id === sessionId) ?? null;
-  return session ? toPublicSession(session) : null;
-}
-
-export async function getSession(sessionId: string): Promise<Session | null> {
-  const sessions = await getSessions();
-  return sessions.find((session) => session.id === sessionId) ?? null;
-}
-
-export async function getOwnedSessions(ownerUserId: string): Promise<Session[]> {
-  const sessions = await getSessions();
-  return sessions.filter((session) => session.ownerUserId === ownerUserId);
-}
-
-export async function getOwnedSession(sessionId: string, ownerUserId: string): Promise<Session | null> {
-  const session = await getSession(sessionId);
-  return session?.ownerUserId === ownerUserId ? session : null;
-}
-
-export async function saveSession(ownerUserId: string, input: SessionInput, id?: string): Promise<Session> {
-  const sessions = await getSessions();
-  const existing = id ? sessions.find((item) => item.id === id && item.ownerUserId === ownerUserId) : undefined;
-  const now = new Date().toISOString();
-  const session: Session = {
-    id: existing?.id ?? randomUUID().slice(0, 8),
-    ownerUserId,
-    title: cleanText(input.title),
-    description: cleanText(input.description),
-    presenter: cleanText(input.presenter),
-    date: cleanText(input.date),
-    active: input.active,
-    allowQuestions: input.allowQuestions,
-    createdAt: existing?.createdAt ?? now,
-    updatedAt: now,
-  };
-  const nextSessions = sessions
-    .filter((item) => item.id !== session.id)
-    .map((item) => (item.ownerUserId === ownerUserId && input.active ? { ...item, active: false, updatedAt: now } : item));
-  await writeJson(sessionsFile, [session, ...nextSessions]);
-  return session;
-}
-
-export async function deleteOwnedSession(sessionId: string, ownerUserId: string): Promise<boolean> {
-  const session = await getOwnedSession(sessionId, ownerUserId);
-  if (!session) {
-    return false;
-  }
-  const sessions = await getSessions();
-  const questions = await getQuestions();
-  await writeJson(sessionsFile, sessions.filter((item) => item.id !== sessionId));
-  await writeJson(questionsFile, questions.filter((question) => question.sessionId !== sessionId));
-  return true;
-}
-
-export async function setOwnedSessionActive(sessionId: string, ownerUserId: string, active: boolean): Promise<Session | null> {
-  const sessions = await getSessions();
-  let updated: Session | null = null;
-  const now = new Date().toISOString();
-  const nextSessions = sessions.map((session) => {
-    if (session.id === sessionId && session.ownerUserId === ownerUserId) {
-      updated = { ...session, active, updatedAt: now };
-      return updated;
-    }
-    if (session.ownerUserId === ownerUserId && active) {
-      return { ...session, active: false, updatedAt: now };
-    }
-    return session;
+export async function getOwnedSessions(owner: string) { return (await rows<Session>("SELECT * FROM sessions WHERE ownerUserId = ? ORDER BY createdAt DESC", [owner])).map(sessionRow); }
+export async function getOwnedSession(id: string, owner: string) { const s = (await rows<Session>("SELECT * FROM sessions WHERE id = ? AND ownerUserId = ?", [id, owner]))[0]; return s ? sessionRow(s) : null; }
+export async function saveSession(owner: string, input: SessionInput, id?: string): Promise<Session> {
+  return transaction(async (c) => {
+    await rows("SELECT id FROM users WHERE id = ? FOR UPDATE", [owner], c);
+    const existing = id ? (await rows<Session>("SELECT * FROM sessions WHERE id = ? AND ownerUserId = ?", [id, owner], c))[0] : undefined;
+    if (id && !existing) throw new Error("Session not found");
+    const now = new Date().toISOString();
+    const s: Session = { ...input, title: cleanText(input.title), description: cleanText(input.description), presenter: cleanText(input.presenter), date: cleanText(input.date), id: existing?.id ?? randomUUID(), ownerUserId: owner, createdAt: existing?.createdAt ?? now, updatedAt: now };
+    if (s.active) await c.execute("UPDATE sessions SET active = FALSE, updatedAt = ? WHERE ownerUserId = ?", [now, owner]);
+    if (existing) await c.execute("UPDATE sessions SET title=?, description=?, presenter=?, date=?, active=?, allowQuestions=?, updatedAt=? WHERE id=? AND ownerUserId=?", [s.title,s.description,s.presenter,s.date,s.active,s.allowQuestions,now,s.id,owner]);
+    else await c.execute("INSERT INTO sessions (id,ownerUserId,title,description,presenter,date,active,allowQuestions,createdAt,updatedAt) VALUES (?,?,?,?,?,?,?,?,?,?)", [s.id,owner,s.title,s.description,s.presenter,s.date,s.active,s.allowQuestions,now,now]);
+    return s;
   });
-  await writeJson(sessionsFile, nextSessions);
-  return updated;
 }
-
+export async function setOwnedSessionActive(id: string, owner: string, active: boolean) {
+  return transaction(async c => {
+    await rows("SELECT id FROM users WHERE id = ? FOR UPDATE", [owner], c);
+    const s = (await rows<Session>("SELECT * FROM sessions WHERE id=? AND ownerUserId=?", [id,owner], c))[0];
+    if (!s) return null;
+    const now = new Date().toISOString();
+    if (active) await c.execute("UPDATE sessions SET active=FALSE, updatedAt=? WHERE ownerUserId=?", [now,owner]);
+    await c.execute("UPDATE sessions SET active=?, updatedAt=? WHERE id=?", [active,now,id]);
+    return sessionRow({...s,active,updatedAt:now});
+  });
+}
+export async function deleteOwnedSession(id: string, owner: string) {
+  const [result] = await getPool().execute<ResultSetHeader>("DELETE FROM sessions WHERE id=? AND ownerUserId=?", [id,owner]); return result.affectedRows > 0;
+}
 export async function addQuestion(input: QuestionInput): Promise<Question> {
-  const questions = await getQuestions();
-  const question: Question = {
-    id: randomUUID(),
-    sessionId: input.sessionId,
-    name: cleanText(input.name?.trim() ? input.name : "Anonymous"),
-    question: cleanText(input.question),
-    emoji: input.emoji,
-    color: input.color,
-    status: "pending",
-    createdAt: new Date().toISOString(),
-  };
-  await writeJson(questionsFile, [question, ...questions]);
-  return question;
-}
-
-export async function getSessionQuestions(sessionId: string, statuses?: Question["status"][]): Promise<Question[]> {
-  const questions = await getQuestions();
-  return questions
-    .filter((question) => question.sessionId === sessionId)
-    .filter((question) => !statuses || statuses.includes(question.status))
-    .sort((first, second) => Number(second.status === "pinned") - Number(first.status === "pinned") || Date.parse(second.createdAt) - Date.parse(first.createdAt));
-}
-
-export async function getOwnedSessionQuestions(sessionId: string, ownerUserId: string): Promise<Question[] | null> {
-  const session = await getOwnedSession(sessionId, ownerUserId);
-  if (!session) {
-    return null;
-  }
-  return getSessionQuestions(sessionId);
-}
-
-export async function updateOwnedQuestionStatus(
-  sessionId: string,
-  ownerUserId: string,
-  questionId: string,
-  status: Question["status"],
-): Promise<Question | null> {
-  const session = await getOwnedSession(sessionId, ownerUserId);
-  if (!session) {
-    return null;
-  }
-  const questions = await getQuestions();
-  let updated: Question | null = null;
-  const nextQuestions = questions.map((question) => {
-    if (question.id !== questionId || question.sessionId !== sessionId) {
-      return question;
-    }
-    updated = { ...question, status };
-    return updated;
+  return transaction(async c => {
+    const s = (await rows<Session>("SELECT * FROM sessions WHERE id=? FOR UPDATE", [input.sessionId], c))[0];
+    if (!s?.active || !s.allowQuestions) throw new Error("Session is not accepting questions");
+    const q: Question = { ...input, id: randomUUID(), name: cleanText(input.name?.trim() || "Anonymous"), question: cleanText(input.question), status: "pending", createdAt: new Date().toISOString() };
+    await c.execute("INSERT INTO questions (id,sessionId,name,question,emoji,color,status,createdAt) VALUES (?,?,?,?,?,?,?,?)", [q.id,q.sessionId,q.name,q.question,q.emoji,q.color,q.status,q.createdAt]); return q;
   });
-  await writeJson(questionsFile, nextQuestions);
-  return updated;
 }
-
-export async function deleteOwnedQuestion(sessionId: string, ownerUserId: string, questionId: string): Promise<Question | null> {
-  const session = await getOwnedSession(sessionId, ownerUserId);
-  if (!session) {
-    return null;
-  }
-  const questions = await getQuestions();
-  const deleted = questions.find((question) => question.id === questionId && question.sessionId === sessionId) ?? null;
-  await writeJson(questionsFile, questions.filter((question) => !(question.id === questionId && question.sessionId === sessionId)));
-  return deleted;
+export async function getSessionQuestions(id: string, statuses?: Question["status"][]) {
+  if (statuses?.length === 0) return [];
+  return rows<Question>(`SELECT * FROM questions WHERE sessionId=? ${statuses ? `AND status IN (${statuses.map(()=>"?").join(",")})` : ""} ORDER BY (status='pinned') DESC, createdAt DESC`, [id,...(statuses ?? [])]);
 }
-
-export async function clearOwnedSessionQuestions(sessionId: string, ownerUserId: string): Promise<boolean> {
-  const session = await getOwnedSession(sessionId, ownerUserId);
-  if (!session) {
-    return false;
-  }
-  const questions = await getQuestions();
-  await writeJson(questionsFile, questions.filter((question) => question.sessionId !== sessionId));
-  return true;
+export async function getOwnedSessionQuestions(id: string, owner: string) { return await getOwnedSession(id,owner) ? getSessionQuestions(id) : null; }
+export async function updateOwnedQuestionStatus(id: string, owner: string, questionId: string, status: Question["status"]) {
+  return transaction(async c => {
+    const q = (await rows<Question>("SELECT q.* FROM questions q JOIN sessions s ON s.id=q.sessionId WHERE q.id=? AND s.id=? AND s.ownerUserId=? FOR UPDATE", [questionId,id,owner], c))[0];
+    if (!q) return null;
+    await c.execute("UPDATE questions SET status=? WHERE id=?", [status,questionId]); return {...q,status};
+  });
 }
-
+export async function deleteOwnedQuestion(id: string, owner: string, questionId: string) {
+  return transaction(async c => {
+    const q = (await rows<Question>("SELECT q.* FROM questions q JOIN sessions s ON s.id=q.sessionId WHERE q.id=? AND s.id=? AND s.ownerUserId=? FOR UPDATE", [questionId,id,owner], c))[0];
+    if (!q) return null;
+    await c.execute("DELETE FROM questions WHERE id=?", [questionId]); return q;
+  });
+}
+export async function clearOwnedSessionQuestions(id: string, owner: string) {
+  return transaction(async c => {
+    const s = await rows("SELECT id FROM sessions WHERE id=? AND ownerUserId=? FOR UPDATE", [id,owner], c);
+    if (!s.length) return false;
+    await c.execute("DELETE FROM questions WHERE sessionId=?", [id]); return true;
+  });
+}
 export function getQuestionStats(questions: Question[]): QuestionStats {
   const approvedQuestions = questions.filter((question) => question.status === "approved" || question.status === "pinned");
   const sorted = [...approvedQuestions].sort((first, second) => Date.parse(first.createdAt) - Date.parse(second.createdAt));

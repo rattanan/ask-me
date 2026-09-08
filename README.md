@@ -1,325 +1,98 @@
 # Live Question Wall
 
-Live Question Wall is a real-time audience question system for seminars, lectures, workshops, and presentations. Admin users create lectures, share a QR code with the audience, moderate incoming questions, and project an approved-question wall as colorful sticky notes.
+A live audience Q&A app built with Next.js 16, React 19, TypeScript and Tailwind CSS. Presenters sign in with Google, create lectures, share QR codes, moderate questions, and project a sticky-note wall.
 
-The application is designed to be simple, fast, secure, and easy to run without a database. Data is stored in JSON files on the server, while admin access is protected with Google Sign-In and tenant-based authorization.
+## MySQL + Docker
 
-## Key Features
+All runtime users, lectures and questions are stored in MySQL 8.4 using `mysql2`. Docker Compose provides MySQL with a persistent named volume and an optional app container. The app no longer reads or writes JSON storage.
 
-- Google Sign-In for admin users with NextAuth.js/Auth.js
-- Per-admin lecture ownership and tenant isolation
-- Public QR-based audience question submission
-- Admin-only lecture management dashboard
-- Admin-only presentation wall
-- Question moderation workflow: `pending`, `approved`, `hidden`, `pinned`
-- Real-time wall updates using server-sent events with polling fallback
-- JSON file persistence in `data/`
-- Input validation, sanitization, and public submission rate limiting
-- Clean, responsive, white-first UI built with Tailwind CSS
-
-## Tech Stack
-
-- Next.js 16 App Router
-- React 19
-- TypeScript
-- Tailwind CSS
-- NextAuth.js/Auth.js
-- Zustand
-- Framer Motion
-- Zod
-- QR code generation
-- JSON file storage
-
-## Application Flow
-
-1. An admin signs in with Google.
-2. The admin creates a lecture.
-3. The system generates a QR code pointing to `/question/{sessionId}`.
-4. Audience members scan the QR code and submit questions without logging in.
-5. Questions are stored as `pending`.
-6. The admin approves, hides, deletes, or pins questions.
-7. Approved and pinned questions appear on the admin-only wall at `/admin/lectures/{sessionId}/wall`.
-
-## Security Model
-
-Admin pages and admin APIs require Google authentication.
-
-Protected areas:
-
-- `/admin/*`
-- `/api/admin/*`
-
-Public areas:
-
-- `/`
-- `/question/{sessionId}`
-- `/api/public/session/{sessionId}`
-- `/api/public/questions/submit`
-
-Tenant isolation is enforced server-side. Each lecture has an `ownerUserId`, and every admin API request verifies that the authenticated user owns the lecture before returning or mutating data.
-
-Public APIs never expose:
-
-- `ownerUserId`
-- admin emails
-- all questions
-- moderation status for a session
-- internal file paths
-- hidden questions
-
-## Project Structure
-
-```text
-app/
-  admin/                  Authenticated admin routes
-  api/admin/              Authenticated owner-scoped APIs
-  api/auth/               NextAuth route handlers
-  api/public/             Safe public APIs
-  login/                  Google sign-in page
-  question/[sessionId]/   Public audience question form
-
-components/               Shared UI components
-features/                 Feature-specific UI and state
-lib/                      Auth, storage, validation, utilities
-data/                     Server-side JSON storage
-types/                    Type declarations
-```
-
-## Environment Variables
-
-Create `.env.local` from `.env.example`:
-
-```bash
-GOOGLE_CLIENT_ID=
-GOOGLE_CLIENT_SECRET=
-NEXTAUTH_SECRET=
-NEXTAUTH_URL=http://localhost:3000
-```
-
-Generate a local `NEXTAUTH_SECRET`:
-
-```bash
-openssl rand -base64 32
-```
-
-## Google OAuth Setup
-
-1. Open Google Cloud Console.
-2. Create or select a Google Cloud project.
-3. Configure the OAuth consent screen.
-4. Create OAuth Client credentials for a Web application.
-5. Add this authorized redirect URI for local development:
-
-```text
-http://localhost:3000/api/auth/callback/google
-```
-
-For LAN testing from another device, also add your private IP callback, for example:
-
-```text
-http://192.168.68.106:3000/api/auth/callback/google
-```
-
-6. Copy the generated client ID and client secret into `.env.local`.
-
-For production, set `NEXTAUTH_URL` to the deployed application URL and add the matching Google OAuth callback URL:
-
-```text
-https://your-domain.com/api/auth/callback/google
-```
-
-## Getting Started
-
-Install dependencies:
+1. Copy `.env.example` to `.env` if you do not already have an environment file.
+2. Set Google OAuth credentials, `NEXTAUTH_SECRET`, `MYSQL_PASSWORD` and `MYSQL_ROOT_PASSWORD`. Generate secrets with `openssl rand -hex 32`.
+3. Start the database and optionally import existing JSON:
 
 ```bash
 npm install
-```
-
-Run the development server:
-
-```bash
+docker compose up -d mysql
+npm run db:migrate-json
 npm run dev
 ```
 
-Open the app:
+The migration imports all three files in `data/` in one transaction, keeps their IDs and relationships, and preserves the original files. It requires empty destination tables and rolls back on failure. Skip migration for a fresh installation. It does not download data from Google Cloud Storage; export any separately deployed data into these JSON files first.
 
-```text
-http://localhost:3000
+For the full Docker stack:
+
+```bash
+docker compose up -d --build
 ```
 
-For testing with audience devices on the same network, use the network URL shown by Next.js, for example:
+Open http://localhost:3000. Google OAuth callback: `http://localhost:3000/api/auth/callback/google`. For a public deployment, configure `NEXTAUTH_URL` and the corresponding Google callback for that domain.
 
-```text
-http://192.168.68.106:3000
+The schema in `docker/mysql/001-schema.sql` initializes on the first start of a fresh MySQL volume. The app container connects to `mysql:3306`; local development connects to `127.0.0.1:3306`. Compose reads `.env`, while Next.js also supports `.env.local` (which takes precedence locally). Keep shared settings in `.env` to avoid mismatched credentials.
+
+`docker compose down` preserves the database volume. `docker compose down -v` deletes it. Back up MySQL before replacing volumes. Existing Cloud Run deployments need network access to a durable MySQL service; this local Compose change does not deploy to the public website automatically.
+
+## AI insights by lecture
+
+On `/admin`, every lecture has a **Generate AI Insight** button. Clicking it opens a dialog and analyzes all questions belonging to that lecture, including pending, approved, hidden and pinned questions. Authorization checks the lecture owner before retrieving data or calling AI. A per-lecture MySQL lock prevents concurrent generation, including across app instances.
+
+The results include:
+
+- Top 10 question submitter names, descending by question count. Names are normalized and combined case-insensitively; anonymous questions are shown separately. These are self-reported names, not verified user identities.
+- Top 10 primary question categories, ordered by exact assigned-question counts. Each question must be classified exactly once. Percentages use all questions in the lecture, including categories outside the top 10.
+- A Thai summary, interesting findings, recommended follow-up actions, and clickable supporting questions.
+- Hover/click animations, animated chart bars, loading/error/empty states, keyboard-accessible dialog and reduced-motion support.
+
+Configure the existing OpenAI-compatible service on the server:
+
+```dotenv
+OPENAI_API_URL=https://api.openai.com/v1
+OPENAI_API_KEY=
+OPENAI_MODEL=gpt-4o-mini
 ```
 
-## Routes
+`OPENAI_API_URL` accepts a base URL ending in `/v1` or the full `/chat/completions` endpoint. The service must support Chat Completions JSON mode (`response_format: { type: "json_object" }`). Responses are validated with Zod, including complete category coverage and valid evidence IDs. No fabricated report is shown when the provider fails or returns invalid data.
 
-### Public
+Only question IDs and text are sent to the configured provider, not participant names or account details. Questions are processed in batches of 60 without sampling; multiple batch reports are consolidated. The request has a 280-second timeout. Large lectures can exceed the provider's context limit or timeout; failure is reported rather than displaying partial coverage. Results are held in the open dialog, and can be generated again; they are not persisted. The lecture's question list refreshes in the dialog so changed inputs can be marked as stale.
 
-| Route | Purpose |
-| --- | --- |
-| `/` | Public landing page with active lecture QR code |
-| `/question/{sessionId}` | Audience question submission form |
-| `/api/public/session/{sessionId}` | Safe public lecture metadata |
-| `/api/public/questions/submit` | Public question submission endpoint |
+## Structure
 
-### Admin Only
+- `app/`: public pages, owner-protected admin pages and APIs.
+- `features/admin/`: lecture cards, moderation and AI analytics dialog.
+- `features/questions/`, `features/wall/`: submission and presentation wall.
+- `lib/db.ts`, `lib/storage.ts`: connection pool, transactions and owner-scoped queries.
+- `lib/insights.ts`: AI batching, validation and report assembly.
+- `docker/mysql/`: database schema.
+- `scripts/migrate-json.ts`: atomic import of legacy data.
 
-| Route | Purpose |
-| --- | --- |
-| `/login` | Google sign-in page |
-| `/admin` | Admin lecture dashboard |
-| `/admin/lectures` | Redirects to admin dashboard |
-| `/admin/lectures/new` | Redirects to admin dashboard create form |
-| `/admin/lectures/{sessionId}` | Redirects to lecture questions |
-| `/admin/lectures/{sessionId}/questions` | Question moderation dashboard |
-| `/admin/lectures/{sessionId}/wall` | Presentation wall |
-| `/api/admin/*` | Authenticated owner-scoped admin APIs |
-
-## JSON Storage
-
-Data is stored on the server in:
-
-```text
-data/users.json
-data/sessions.json
-data/questions.json
-```
-
-These files must stay outside `public/`.
-
-### User
-
-```json
-{
-  "id": "internal-user-id",
-  "googleId": "google-account-id",
-  "email": "admin@example.com",
-  "name": "Admin Name",
-  "image": "https://...",
-  "createdAt": "2026-07-01T00:00:00.000Z"
-}
-```
-
-### Session
-
-```json
-{
-  "id": "abc123",
-  "ownerUserId": "internal-user-id",
-  "title": "AI for Everyone",
-  "description": "Audience Q&A",
-  "presenter": "Presenter Name",
-  "date": "2026-07-01",
-  "active": true,
-  "allowQuestions": true,
-  "createdAt": "2026-07-01T00:00:00.000Z",
-  "updatedAt": "2026-07-01T00:00:00.000Z"
-}
-```
-
-### Question
-
-```json
-{
-  "id": "q123",
-  "sessionId": "abc123",
-  "name": "Boat",
-  "question": "What is RAG?",
-  "emoji": "🤔",
-  "color": "yellow",
-  "status": "pending",
-  "createdAt": "2026-07-01T00:00:00.000Z"
-}
-```
-
-## Quality Checks
-
-Run linting:
+## Verification
 
 ```bash
 npm run lint
-```
-
-Run a production build:
-
-```bash
 npm run build
+npm test
+MYSQL_INTEGRATION=1 node --import tsx --test tests/mysql.test.ts
+node --import tsx scripts/check-ai.ts
+# With npm run dev running locally and Chrome installed:
+node --import tsx scripts/check-ui.ts
 ```
 
-## Deployment Notes
+The MySQL integration test creates and removes its own temporary records. The AI smoke test sends four synthetic questions to your configured AI service. The wall continues to use server-sent events plus polling. Public submissions retain validation, sanitization and a process-local ten-second rate limit per IP and lecture.
 
-- Configure all environment variables in the hosting platform.
-- Set `NEXTAUTH_URL` to the production URL.
-- Add the production Google OAuth callback URL in Google Cloud Console.
-- Ensure the deployed runtime can persist files in `data/`.
-- For serverless platforms with ephemeral filesystems, replace JSON file storage with a durable server-side storage adapter before production use.
+## ntop deployment (PM2 + Nginx)
 
-## Google Cloud Run Demo Deployment
-
-This project is configured for quick Google Cloud Run deployment with a Next.js standalone Docker image.
-
-Cloud Run OAuth callback URL:
-
-```text
-https://YOUR_CLOUD_RUN_URL/api/auth/callback/google
-```
-
-Add that callback URL to the Google OAuth Client in Google Cloud Console before testing sign-in.
-
-### Authenticate and Configure Project
+In `/opt/apps/ask-me`, configure `.env` with `MYSQL_PORT=3308` and
+`NEXTAUTH_URL=https://ask-me.rattanan.dev`. Keep secrets out of Git.
 
 ```bash
-gcloud auth login
-gcloud config set project YOUR_PROJECT_ID
-gcloud services enable run.googleapis.com cloudbuild.googleapis.com
+git pull --ff-only origin main
+npm ci
+docker compose up -d mysql
+# First migration only, with empty destination tables:
+npm run db:migrate-json
+npm run build
+pm2 startOrReload ecosystem.config.cjs --update-env
+pm2 save
+sudo bash deploy/setup-https.sh
 ```
 
-### First Deploy
-
-Deploy the service from source:
-
-```bash
-gcloud run deploy ask-me \
-  --source . \
-  --region asia-southeast1 \
-  --allow-unauthenticated \
-  --min-instances 1 \
-  --max-instances 1
-```
-
-Cloud Run should return a service URL. Use that URL as `NEXTAUTH_URL`.
-
-### Set Runtime Environment Variables
-
-```bash
-gcloud run services update ask-me \
-  --region asia-southeast1 \
-  --set-env-vars NEXTAUTH_URL=https://YOUR_CLOUD_RUN_URL,NEXTAUTH_SECRET=YOUR_SECRET,GOOGLE_CLIENT_ID=YOUR_GOOGLE_CLIENT_ID,GOOGLE_CLIENT_SECRET=YOUR_GOOGLE_CLIENT_SECRET
-```
-
-After updating environment variables, test:
-
-```text
-https://YOUR_CLOUD_RUN_URL
-```
-
-## Demo Storage Warning
-
-This Cloud Run setup intentionally uses local JSON files inside the container for demo/prototype use only.
-
-Important limitations:
-
-- Local JSON storage on Cloud Run is temporary.
-- Data may be lost when the container restarts.
-- Data may be lost when the service is redeployed.
-- Data may become inconsistent if the service scales beyond one instance.
-- The recommended demo setting is `--max-instances 1` to reduce inconsistency risk.
-
-For production, migrate storage to durable infrastructure such as Google Cloud Storage, Firestore, Cloud SQL, Memorystore/Redis, or another managed database.
-
-## License
-
-Private project.
+The app listens on loopback port 3012. Nginx allows long AI requests and disables buffering for wall events. The HTTPS setup preserves an existing site configuration on repeat runs. Add `https://ask-me.rattanan.dev/api/auth/callback/google` to the Google OAuth client's authorized redirect URIs.

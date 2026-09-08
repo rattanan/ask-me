@@ -17,10 +17,25 @@ interface AdminDashboardProps {
 export function AdminDashboard({ initialQuestions, initialStats, session }: AdminDashboardProps) {
   const { questions, stats, setQuestions, updateQuestion, removeQuestion, clearQuestions } = useQuestionStore();
   const [search, setSearch] = useState("");
+  const [error, setError] = useState("");
 
   useEffect(() => {
     setQuestions(initialQuestions, initialStats);
   }, [initialQuestions, initialStats, setQuestions]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const refresh = async () => {
+      try {
+        const response = await fetch(`/api/admin/questions/${session.id}`, { signal: controller.signal });
+        if (!response.ok) return;
+        const data = await response.json();
+        setQuestions(data.questions, data.stats);
+      } catch { /* Retry on the next polling cycle. */ }
+    };
+    const interval = setInterval(refresh, 5000);
+    return () => { controller.abort(); clearInterval(interval); };
+  }, [session.id, setQuestions]);
 
   const filteredQuestions = useMemo(() => {
     const query = search.toLowerCase();
@@ -33,16 +48,20 @@ export function AdminDashboard({ initialQuestions, initialStats, session }: Admi
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: question.id, status }),
     });
+    if (!response.ok) { setError("อัปเดตคำถามไม่สำเร็จ กรุณาลองใหม่"); return; }
+    setError("");
     updateQuestion((await response.json()) as Question);
   }
 
   async function deleteOne(questionId: string) {
-    await fetch(`/api/admin/questions/${session.id}?id=${questionId}`, { method: "DELETE" });
+    const response = await fetch(`/api/admin/questions/${session.id}?id=${questionId}`, { method: "DELETE" });
+    if (!response.ok) { setError("ลบคำถามไม่สำเร็จ"); return; }
     removeQuestion(questionId);
   }
 
   async function clearSession() {
-    await fetch(`/api/admin/questions/${session.id}`, { method: "DELETE" });
+    const response = await fetch(`/api/admin/questions/${session.id}`, { method: "DELETE" });
+    if (!response.ok) { setError("ลบคำถามไม่สำเร็จ"); return; }
     clearQuestions();
   }
 
@@ -66,7 +85,7 @@ export function AdminDashboard({ initialQuestions, initialStats, session }: Admi
               <h1 className="text-3xl font-bold tracking-tight text-zinc-950">{session.title}</h1>
             </div>
             <div className="grid grid-cols-3 gap-3">
-              <Stat label="Questions" value={stats.total.toString()} />
+              <Stat label="Questions" value={questions.length.toString()} />
               <Stat label="Per min" value={stats.questionsPerMinute.toString()} />
               <Stat label="Top emoji" value={stats.mostUsedEmoji} />
             </div>
@@ -80,6 +99,8 @@ export function AdminDashboard({ initialQuestions, initialStats, session }: Admi
             <Button variant="danger" onClick={clearSession}>Clear Session</Button>
           </div>
         </div>
+
+        {error && <p role="alert" className="mt-4 text-sm text-red-600">{error}</p>}
 
         <div className="mt-5 grid gap-3">
           {filteredQuestions.map((question) => (

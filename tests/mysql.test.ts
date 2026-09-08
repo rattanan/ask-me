@@ -14,6 +14,8 @@ test("MySQL: owner isolation, all statuses, concurrent writes, cascade and activ
   const s=await saveSession(a.id,input); const other=await saveSession(b.id,input);
   const submitted=await Promise.all(Array.from({length:12},(_,i)=>addQuestion({sessionId:s.id,name:"ผู้ถาม",question:`ภาษาไทย ${i} 🚀`,emoji:"🚀",color:"blue"})));
   await addQuestion({sessionId:other.id,name:"Other",question:"Other lecture only",emoji:"🤔",color:"blue"});
+  assert.ok(submitted.every(q=>q.status === "approved"));
+  await updateOwnedQuestionStatus(s.id,a.id,submitted[3].id,"pending");
   await updateOwnedQuestionStatus(s.id,a.id,submitted[0].id,"hidden");await updateOwnedQuestionStatus(s.id,a.id,submitted[1].id,"approved");await updateOwnedQuestionStatus(s.id,a.id,submitted[2].id,"pinned");
   const all=await getOwnedSessionQuestions(s.id,a.id);assert.equal(all?.length,12);assert.equal(new Set(all?.map(q=>q.status)).size,4);assert.ok(all?.every(q=>q.sessionId===s.id));
   assert.equal(await getOwnedSessionQuestions(s.id,b.id),null);assert.equal(await updateOwnedQuestionStatus(s.id,b.id,submitted[0].id,"approved"),null);assert.equal(await deleteOwnedSession(s.id,b.id),false);

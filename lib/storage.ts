@@ -54,7 +54,7 @@ export async function addQuestion(input: QuestionInput): Promise<Question> {
   return transaction(async c => {
     const s = (await rows<Session>("SELECT * FROM sessions WHERE id=? FOR UPDATE", [input.sessionId], c))[0];
     if (!s?.active || !s.allowQuestions) throw new Error("Session is not accepting questions");
-    const q: Question = { ...input, id: randomUUID(), name: cleanText(input.name?.trim() || "Anonymous"), question: cleanText(input.question), status: "pending", createdAt: new Date().toISOString() };
+    const q: Question = { ...input, id: randomUUID(), name: cleanText(input.name?.trim() || "Anonymous"), question: cleanText(input.question), status: "approved", createdAt: new Date().toISOString() };
     await c.execute("INSERT INTO questions (id,sessionId,name,question,emoji,color,status,createdAt) VALUES (?,?,?,?,?,?,?,?)", [q.id,q.sessionId,q.name,q.question,q.emoji,q.color,q.status,q.createdAt]); return q;
   });
 }

@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS sessions (
 CREATE TABLE IF NOT EXISTS questions (
  id VARCHAR(36) PRIMARY KEY, sessionId VARCHAR(36) NOT NULL, name VARCHAR(255) NOT NULL,
  question TEXT NOT NULL, emoji VARCHAR(16) NOT NULL, color VARCHAR(16) NOT NULL,
- status ENUM('pending','approved','hidden','pinned') NOT NULL DEFAULT 'pending', createdAt VARCHAR(30) NOT NULL,
+ status ENUM('pending','approved','hidden','pinned') NOT NULL DEFAULT 'approved', createdAt VARCHAR(30) NOT NULL,
  FOREIGN KEY (sessionId) REFERENCES sessions(id) ON DELETE CASCADE,
  INDEX questions_session (sessionId, createdAt)
 ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;

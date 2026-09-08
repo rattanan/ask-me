@@ -31,6 +31,8 @@ The schema in `docker/mysql/001-schema.sql` initializes on the first start of a 
 
 `docker compose down` preserves the database volume. `docker compose down -v` deletes it. Back up MySQL before replacing volumes. Existing Cloud Run deployments need network access to a durable MySQL service; this local Compose change does not deploy to the public website automatically.
 
+New submissions are approved automatically and appear on the lecture wall immediately. Presenters can still hide, pin, delete, or return questions to pending manually.
+
 ## AI insights by lecture
 
 On `/admin`, every lecture has a **Generate AI Insight** button. Clicking it opens a dialog and analyzes all questions belonging to that lecture, including pending, approved, hidden and pinned questions. Authorization checks the lecture owner before retrieving data or calling AI. A per-lecture MySQL lock prevents concurrent generation, including across app instances.
